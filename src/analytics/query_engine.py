@@ -341,11 +341,11 @@ def _scalar(df: pd.DataFrame, metric: semantic.Metric, spec: QuerySpec) -> dict:
     if agg == semantic.SHARE:
         col, val = metric.predicate
         hits = int((df[col] == val).sum())
-        return {"value": 100.0 * hits / n if n else float("nan"),
+        return {"value": metric.scale * hits / n if n else float("nan"),
                 "numerator": float(hits), "denominator": float(n)}
     if agg == semantic.DISPUTED_RATIO:
         hits = int(df["is_disputed"].sum())
-        return {"value": 100.0 * hits / n if n else float("nan"),
+        return {"value": metric.scale * hits / n if n else float("nan"),
                 "numerator": float(hits), "denominator": float(n)}
     if agg == semantic.THRESHOLD_COUNT:
         thr = spec.threshold if spec.threshold is not None else metric.threshold
@@ -396,7 +396,7 @@ def _grouped(df: pd.DataFrame, keys: list[str], metric: semantic.Metric,
             out["value"] = out["numerator"]
         else:
             out["value"] = np.where(out["denominator"] > 0,
-                                    100.0 * out["numerator"] / out["denominator"], np.nan)
+                                    metric.scale * out["numerator"] / out["denominator"], np.nan)
         return out
     raise QueryError(f"aggregation {agg!r} is not supported for {metric.name}")
 

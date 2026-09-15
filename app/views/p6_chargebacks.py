@@ -67,7 +67,13 @@ def render(ctx) -> None:
         f"entities, so this dashboard never does.", kind="warn")
 
     # ---- trend -------------------------------------------------------------
-    section("Dispute volume over time", "By the date the customer reported the dispute.")
+    tx_dates = pd.to_datetime(tx["timestamp_clean"])
+    window = (f"Transaction window: {tx_dates.min():%d %b %Y} – {tx_dates.max():%d %b %Y}. "
+              if not tx_dates.empty else "")
+    section("Dispute volume over time",
+            f"{window}Complaint-report charts plot the date each dispute was reported, so they "
+            "may extend beyond this window: disputes can be reported after the underlying "
+            "transaction.")
     reported = cb.dropna(subset=["reported_date"]).copy()
     if not reported.empty:
         daily = (reported.assign(day=pd.to_datetime(reported["reported_date"]))

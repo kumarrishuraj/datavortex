@@ -1,8 +1,8 @@
 """Transaction network structure.
 
 This module exists to answer one question honestly: **does this dataset contain
-a fraud ring?** The competition brief assumes it does. The forensic audit found
-it does not, and the structural evidence is unambiguous:
+a fraud ring?** The competition brief assumes it does. The forensic audit found no
+statistically or structurally supported evidence for the tested ring pattern:
 
   * the graph is strictly BIPARTITE (users -> merchants). No ID appears on both
     sides, so there are no user-to-user transfers and no directed money path

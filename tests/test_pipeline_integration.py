@@ -318,8 +318,8 @@ def test_dim_date_spans_both_fact_tables(tables):
 def test_no_fabricated_signal_columns_exist(tables):
     """Guard against a future commit reintroducing invented fraud signals.
 
-    The audit proved this dataset has no transaction rings, no velocity signal
-    and no shared-identity ring. No column may imply otherwise.
+    The audit found no structural evidence of transaction rings, no velocity signal
+    and no shared-identity pattern. No column may imply otherwise.
     """
     banned = {"fraud_ring_id", "ring_id", "is_money_laundering", "confirmed_fraud",
               "is_fraud", "circular_flow", "velocity_anomaly"}

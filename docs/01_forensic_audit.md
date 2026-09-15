@@ -267,7 +267,7 @@ Right-side key duplication would inflate a naive merge: tx→KYC 20,400 → ~22,
 
 ## E. Fraud-pattern feasibility — the findings that constrain the solution
 
-### E1. The transaction graph is a sparse forest. There are no rings.
+### E1. The transaction graph is a sparse forest. It contains no cycles.
 
 After deduplication: 20,000 transactions across 17,878 users and 8,051 merchants.
 
@@ -277,7 +277,7 @@ After deduplication: 20,000 transactions across 17,878 users and 8,051 merchants
 - No ID appears as both user and merchant — strictly **bipartite**, no user-to-user transfers exist
 - **User pairs sharing ≥2 merchants: 0 → zero 4-cycles → the bipartite graph is acyclic**
 
-A directed `A→B→C→A` money-movement ring is **structurally impossible** in this data. Global community detection is not discriminative when the largest component is 0.3% of the graph.
+A directed `A→B→C→A` money-movement cycle **cannot be formed from these transactions**, so the available data does not provide statistically or structurally supported evidence for the tested fraud-ring hypothesis. Money moving outside this dataset is not observed. Global community detection is not discriminative when the largest component is 0.3% of the graph.
 
 ### E2. No temporal anomaly signal
 
@@ -288,7 +288,7 @@ A directed `A→B→C→A` money-movement ring is **structurally impossible** in
 
 No velocity, burst or spike signal exists.
 
-### E3. No shared-identity ring (both candidate signals are masking artifacts)
+### E3. No shared-identity evidence (both candidate signals are masking artifacts)
 
 | Signal | Observed | Expected by chance | Verdict |
 |---|---|---|---|
@@ -298,7 +298,7 @@ No velocity, burst or spike signal exists.
 | Masked settlement account (last-4) shared | 71 | ~79 | below chance |
 | Full PAN shared across user_ids | **0** | — | none |
 
-Collisions appear only where masking reduces the key to 4 digits (10,000 slots), and even then occur *below* the birthday-collision rate. There is no identity-farming ring.
+Collisions appear only where masking reduces the key to 4 digits (10,000 slots), and even then occur *below* the birthday-collision rate. The data therefore provides no supported evidence of identity farming across IDs.
 
 ### E4. `reason_code` and `complaint_text` are independent
 

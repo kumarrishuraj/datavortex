@@ -1,8 +1,8 @@
 """Page 5 — Identity & Network Intelligence.
 
 This page does not claim a fraud ring. It shows the identity-collision problem,
-which is real and measurable, and then shows the structural evidence that the
-transaction graph cannot contain a ring.
+which is real and measurable, and then shows why the recorded transactions give no
+statistically or structurally supported evidence for the tested ring pattern.
 """
 from __future__ import annotations
 
@@ -242,10 +242,13 @@ def _ring_hypothesis(ctx) -> None:
         f'FRAUD RING HYPOTHESIS — NOT SUPPORTED</div>'
         f'<div style="font-size:0.95rem;font-weight:620;color:#0b0b0b;margin-bottom:0.5rem">'
         f'The brief asks for circular money-laundering rings of the form A → B → C → A. '
-        f'This dataset cannot contain one.</div>'
-        f'<div style="font-size:0.84rem;line-height:1.65">The claim is not that we looked and '
-        f'found nothing. It is that the graph\'s structure rules the pattern out, and the '
-        f'four measurements below are each independently sufficient to establish that.</div>'
+        f'These transactions cannot form one.</div>'
+        f'<div style="font-size:0.84rem;line-height:1.65">This is not a case of looking and '
+        f'finding nothing: the graph\'s structure rules the pattern out for the recorded '
+        f'transactions, and each of the four measurements below shows that on its own. The '
+        f'available data therefore does not provide statistically or structurally supported '
+        f'evidence for the tested fraud-ring hypothesis. Money moving outside this dataset is '
+        f'not observed.</div>'
         f'</div>', unsafe_allow_html=True)
 
     section("Structural evidence")
@@ -317,6 +320,6 @@ def _ring_hypothesis(ctx) -> None:
         "Fabricating a ring here would have been easy and would have looked impressive for "
         "about ninety seconds. The structural facts above are checkable in one query each, "
         "and a reviewer who ran them would find the finding false. A system that reports "
-        "<em>no ring present, and here is why that is structurally guaranteed</em> is doing "
+        "<em>no supported evidence for the tested ring pattern, and exactly why</em> is doing "
         "the job a payments risk team actually needs: separating signal from noise rather "
         "than manufacturing confidence.", kind="good")

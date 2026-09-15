@@ -210,7 +210,7 @@ def _forecast_section(ctx) -> None:
     rows["date"] = pd.to_datetime(rows["date"])
     actual = rows[rows["kind"] == "actual"]
     future = rows[rows["kind"] == "forecast"]
-    left, right = st.columns([3, 2], gap="medium")
+    left, right = st.columns([4, 3], gap="medium")
     with left:
         st.plotly_chart(
             charts.forecast_chart(actual["date"], actual["value"], future["date"],
@@ -220,11 +220,19 @@ def _forecast_section(ctx) -> None:
     with right:
         table = backtest[backtest["series"] == series][
             ["method_label", "mae", "mape_pct", "holdout_band_coverage_pct", "selected"]].rename(
-            columns={"method_label": "Method", "mae": "Holdout MAE", "mape_pct": "MAPE %",
-                     "holdout_band_coverage_pct": "Band held %", "selected": "Selected"})
+            columns={"method_label": "Method", "mae": "MAE", "mape_pct": "MAPE %",
+                     "holdout_band_coverage_pct": "Band %", "selected": "Chosen"})
         st.dataframe(table, hide_index=True, width="stretch",
-                     column_config={"Holdout MAE": st.column_config.NumberColumn(format="%.2f"),
-                                    "MAPE %": st.column_config.NumberColumn(format="%.2f")})
+                     column_config={
+                         "MAE": st.column_config.NumberColumn(
+                             format="%.2f", help="Mean absolute error on the holdout weeks"),
+                         "MAPE %": st.column_config.NumberColumn(
+                             format="%.2f", help="Mean absolute percentage error on the holdout"),
+                         "Band %": st.column_config.NumberColumn(
+                             format="%.1f", help="Share of holdout days inside the 95% band"),
+                         "Chosen": st.column_config.CheckboxColumn(
+                             help="Lowest holdout MAE; used for the projection"),
+                     })
     money = fmt_inr if d["unit"] == "INR" else fmt_int
     trend = "no significant trend" if float(d["slope_p"]) >= 0.05 else "a significant trend"
     weekday = (f"; a day-of-week test gives p = {float(d['weekday_p']):.3f}"

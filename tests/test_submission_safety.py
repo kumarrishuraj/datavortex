@@ -25,6 +25,7 @@ from src.agent.planner import IntentRejected, plan  # noqa: E402
 from src.analytics import forecast  # noqa: E402
 from src.analytics import query_engine as QE  # noqa: E402
 from src.analytics import risk_indicators as RI  # noqa: E402
+from src.analytics import semantic  # noqa: E402
 from src.config import PROCESSED_DIR, RAW_FILES  # noqa: E402
 from src.transformation.audit_facts import expected_shared_keys, lookup  # noqa: E402
 
@@ -158,6 +159,75 @@ def test_malicious_and_sensitive_prompts_are_refused(prompt):
 ])
 def test_safety_guards_do_not_refuse_ordinary_questions(question):
     assert plan(question).kind
+
+
+UNSUPPORTED = [
+    "Transaction value by gender",
+    "Chargebacks by weather",
+    "Show churn rate by month",
+    "What is the customer lifetime value?",
+    "What is the average merchant profit?",
+    "Flag fraud users",
+    "Show fraud customers",
+    "complaints per 10000 transactions",
+]
+
+
+@pytest.mark.parametrize("question", UNSUPPORTED)
+def test_unsupported_fields_and_fraud_listings_are_refused_not_substituted(question):
+    """A field the data does not have must be refused, never answered with another metric."""
+    with pytest.raises(IntentRejected):
+        plan(question)
+
+
+def test_business_terms_are_answered_with_a_disclosed_reading():
+    """'Revenue' and 'region' map to real fields, and the answer must say how it read them."""
+    revenue = plan("What is the total revenue?")
+    assert revenue.metric == "total_transaction_amount"
+    assert any("no revenue or sales field" in a for a in revenue.assumptions)
+    region = plan("Show sales by region")
+    assert region.dimension == "state"
+    assert any("region" in a.lower() and "state" in a.lower() for a in region.assumptions)
+
+
+PER_THOUSAND = [
+    "chargebacks per 1000 transactions",
+    "How many chargebacks per thousand transactions?",
+    "What is the chargeback rate per 1,000 transactions?",
+    "disputes per thousand payments",
+]
+
+
+@built
+@pytest.mark.parametrize("question", PER_THOUSAND)
+def test_chargebacks_per_thousand_transactions_uses_its_registered_metric(question, frames):
+    """The per-1,000 rate resolves to its own metric and says what a chargeback means."""
+    agg, star = frames
+    intent = plan(question)
+    assert intent.metric == "chargebacks_per_1000_transactions"
+    assert intent.kind == "metric"
+    answer = execute(intent, agg, star)
+    assert not answer.no_result
+    rate = float(agg["kpi_headline"].set_index("metric")
+                 .loc["chargeback_to_transaction_ratio", "value"])
+    assert f"{rate * 10:,.2f}" in answer.headline
+    detail = answer.detail.lower()
+    assert "distinct transaction" in detail and "not a complaint" in detail
+    assert answer.provenance["metric"] == "chargebacks_per_1000_transactions"
+    assert "1000" in answer.provenance["formula"]
+
+
+@built
+def test_per_thousand_metric_shares_the_chargeback_rate_definition(engine):
+    per_thousand = semantic.get("chargebacks_per_1000_transactions")
+    rate = semantic.get("chargeback_to_transaction_ratio")
+    assert (per_thousand.source, per_thousand.aggregation, per_thousand.coverage_basis) == \
+        (rate.source, rate.aggregation, rate.coverage_basis)
+    a = QE.run(QE.QuerySpec(metric=per_thousand.name), engine)
+    b = QE.run(QE.QuerySpec(metric=rate.name), engine)
+    assert a.total_numerator == b.total_numerator
+    assert a.total_denominator == b.total_denominator
+    assert a.total_value == pytest.approx(10 * b.total_value)
 
 
 # --------------------------------------------------------------------------

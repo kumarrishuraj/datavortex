@@ -79,7 +79,8 @@ def plotly_layout(height: int = 340, showlegend: bool = False, **kwargs) -> dict
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
         font=dict(family=FONT, size=12, color=INK_SECONDARY),
-        margin=dict(l=8, r=12, t=34, b=8),
+        # A legend sits above the plot area, so it needs its own band below the title.
+        margin=dict(l=8, r=12, t=64 if showlegend else 34, b=8),
         title=dict(font=dict(size=13, color=INK), x=0, xanchor="left", y=0.97),
         hoverlabel=dict(
             bgcolor="#ffffff", bordercolor=BORDER,

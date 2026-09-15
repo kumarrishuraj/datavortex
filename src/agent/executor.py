@@ -152,6 +152,8 @@ def fmt(value, unit: str) -> str:
         return f"{value:.2f} days"
     if unit == "ratio":
         return f"{value:.3f}"
+    if unit == "per_1000":
+        return f"{value:,.2f}"
     if unit == "points":
         return f"{value:.1f}"
     return f"{value:,.0f}"
@@ -391,6 +393,16 @@ def _by_dimension(ctx: _Ctx) -> Answer:
     it = ctx.intent
     metric = semantic.get(it.metric)
     dim = semantic.get_dimension(it.dimension)
+    if metric.aggregation == semantic.DISPUTED_RATIO and metric.scale != 100.0:
+        # Rate breakdowns need confidence intervals, the volume floor and shrinkage, which are
+        # built on the percent chargeback rate. Say so instead of ranking unstable raw rates.
+        return Answer(
+            headline=(f"{metric.label} is answered as an overall figure or a trend, not broken "
+                      f"down by {dim.label.lower()}."),
+            detail=(f"Ask for the chargeback rate by {dim.label.lower()}: that breakdown carries "
+                    f"95% confidence intervals, the minimum-volume floor and shrinkage, so small "
+                    f"groups are not ranked on unstable rates. {metric.definition}"),
+            no_result=True)
     if metric.aggregation == semantic.DISPUTED_RATIO:
         return _entity_rate(ctx) if dim.entity else _category_rate(ctx, "ranking")
 
@@ -849,8 +861,9 @@ def _network(ctx: _Ctx) -> Answer:
     bipartite = bool(n["is_bipartite"])
     choice = select_chart(kind="listing", records=True)
     answer = Answer(
-        headline=("No — the fraud-ring hypothesis is not supported: this transaction graph cannot "
-                  "contain a circular money path." if acyclic and bipartite else
+        headline=("No statistically or structurally supported evidence was found for the tested "
+                  "fraud-ring hypothesis: these transactions cannot form a circular money path."
+                  if acyclic and bipartite else
                   "The transaction graph contains cycles; inspect the network page before drawing "
                   "conclusions."),
         chart_kind=choice.chart, chart_reason=choice.reason, rows_analysed=int(n["transactions"]))
@@ -872,7 +885,9 @@ def _network(ctx: _Ctx) -> Answer:
         ("Largest component share", f"{float(n['largest_component_share_pct']):.2f}%"),
     ], columns=["Structural test", "Result"])
     ctx.caveat("This is a structural result, not a gap in the search: a circular A → B → C → A "
-               "money path needs customer-to-customer transfers, and this data has none.", "info")
+               "money path needs customer-to-customer transfers, and this data has none. It "
+               "describes the recorded transactions only; money moving outside this dataset is not "
+               "observed.", "info")
     ctx.validation = "read from the network summary built from FACT_TRANSACTIONS"
     return answer
 

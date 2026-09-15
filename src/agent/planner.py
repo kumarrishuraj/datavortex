@@ -171,6 +171,7 @@ def validate_intent(intent: Intent) -> Intent:
 # --------------------------------------------------------------------------
 def normalize(text: str) -> str:
     t = str(text).lower().replace("₹", " ")
+    t = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", t)   # "1,000" is one number, not "1 000"
     t = re.sub(r"[-_/]", " ", t)
     t = re.sub(r"[^a-z0-9%\s]", " ", t)
     return re.sub(r"\s+", " ", t).strip()
@@ -295,7 +296,11 @@ _REPEAT = re.compile(r"\b(repeat\w* disput\w*|repeat\w* chargebacks?|multiple di
 _RING = re.compile(r"\b(fraud rings?|rings?|circular|money laundering|launder\w*|round tripping|"
                    r"cycles?)\b")
 _FRAUD_LABEL = re.compile(r"\b(fraudsters?|fraudulent|confirmed fraud|scammers?|criminals?|guilty|"
-                          r"commit(?:s|ted|ting)? fraud)\b")
+                          r"commit(?:s|ted|ting)? fraud|"
+                          r"fraud (?:users?|customers?|merchants?|accounts?|people|persons|"
+                          r"individuals?|entities|transactions?|payments?|cases?)|"
+                          r"(?:flag|flags|flagged|label|labels|labell?ed|mark|marks|marked|tag|tags|"
+                          r"tagged|accuse|accused)\b.*\bfraud\w*)\b")
 _INJECTION = re.compile(r"\b(ignore (?:all |the |any )?(?:previous|prior|above|earlier) "
                         r"(?:instructions?|rules?|prompts?)|system prompt|jailbreak|developer mode|"
                         r"disregard (?:the |your )?(?:rules|instructions))\b")
@@ -309,6 +314,44 @@ _EXPOSE = re.compile(r"\b(full|raw|unmasked|complete|actual|real|reveal|expose|d
 _SQL = re.compile(r"\bselect\b[\s\S]*?\bfrom\b|\bunion\s+(?:all\s+)?select\b|\binsert\s+into\b|"
                   r"\bwhere\s+\w+\s*(?:=|<|>|\blike\b)")
 _TXN_WORDS = re.compile(r"\b(transaction|transactions|value|amount|revenue|sales|volume)\b")
+
+# Business measures the Track 1 files do not contain. Naming one is refused with the
+# reason, instead of being answered quietly with a different metric.
+_UNAVAILABLE = (
+    (re.compile(r"\b(churn\w*|retention|attrition|cancell?ations?)\b"),
+     "Churn and retention cannot be measured from this data: there is no customer lifecycle, "
+     "account closure or cancellation field, and the transactions cover a single quarter."),
+    (re.compile(r"\b(lifetime value|clv|ltv)\b"),
+     "Customer lifetime value cannot be computed from this data: it needs revenue, costs and a "
+     "customer lifecycle, and the files hold only one quarter of payment amounts."),
+    (re.compile(r"\b(profits?|profitability|margins?|commissions?|interchange|mdr|"
+                r"merchant discount rate|fees?|earnings|ebitda)\b"),
+     "Profit, margin and fees cannot be computed from this data: it records payment amounts but "
+     "has no fee, commission, cost or margin field."),
+)
+
+# "... by <field>" must name something the registry knows. An unrecognised field is refused
+# rather than silently dropped, which would answer a different question.
+_BREAKDOWN = re.compile(r"\b(?:by|per|across|for each)\s+((?:[a-z0-9%]+\s*){1,3})")
+_BREAKDOWN_STOP = frozenset({
+    "in", "on", "at", "for", "during", "over", "from", "to", "between", "since", "with", "where",
+    "which", "who", "that", "last", "this", "next", "before", "after", "within", "compared",
+    "than", "is", "are", "was", "were", "has", "have", "show", "please", "only", "vs", "versus"})
+_BREAKDOWN_FILLER = frozenset({
+    "the", "a", "an", "each", "every", "all", "their", "its", "our", "my", "total", "count",
+    "counts", "number", "numbers", "of", "and", "or", "top", "highest", "lowest", "most", "least",
+    "level", "levels", "type", "types", "group", "groups", "wise", "rate", "rates", "share",
+    "percentage", "percent", "%", "it", "them", "one", "hundred", "thousand", "lakh", "million",
+    "1k", "10k"})
+_REVENUE_WORDS = re.compile(r"\b(revenues?|sales|gmv|turnover)\b")
+_REGION_WORDS = re.compile(r"\b(regions?|regional|geography)\b")
+# "per 1,000 transactions" names a scale. It must match a registered rate with that scale;
+# otherwise a count or a percentage would be returned under the wrong unit.
+_PER_SCALE = re.compile(r"\bper\s+(100|hundred|1000|1k|thousand|10000|10k|lakh|100000|"
+                        r"1000000|million)\b")
+_SCALE_WORDS = {"100": 100.0, "hundred": 100.0, "1000": 1000.0, "1k": 1000.0, "thousand": 1000.0,
+                "10000": 10000.0, "10k": 10000.0, "lakh": 100000.0, "100000": 100000.0,
+                "1000000": 1000000.0, "million": 1000000.0}
 
 FORECAST_METRICS = {"total_transaction_count", "total_transaction_amount",
                     "chargeback_count", "chargeback_to_transaction_ratio"}
@@ -357,7 +400,67 @@ def _subject(question: str) -> str | None:
     return None
 
 
+@lru_cache(maxsize=1)
+def _vocabulary() -> frozenset:
+    words: set[str] = set()
+    for item in (*semantic.METRICS.values(), *semantic.DIMENSIONS.values()):
+        for phrase in (*item.synonyms, item.label, item.name.replace("_", " ")):
+            words.update(normalize(phrase).split())
+    words.update({"day", "daily", "date", "week", "weekly", "month", "monthly", "quarter",
+                  "quarterly", "hour", "hourly", "year", "yearly", "time", "period", "q1", "q2",
+                  "q3", "q4", "success", "successful", "failed", "failure", "pending"})
+    words.update(_MONTHS)
+    return frozenset(words)
+
+
+def _known(word: str) -> bool:
+    vocab = _vocabulary()
+    if word in vocab or word in _BREAKDOWN_FILLER or word.isdigit():
+        return True
+    stems = (word[:-1] if word.endswith("s") else "", word[:-2] if word.endswith("es") else "",
+             word[:-3] + "y" if word.endswith("ies") else "")
+    return any(stem and stem in vocab for stem in stems)
+
+
+def _unknown_breakdown(text: str) -> str | None:
+    """The field named after 'by' / 'per' when the registry does not know it, e.g. 'gender'."""
+    for match in _BREAKDOWN.finditer(text):
+        words = []
+        for word in match.group(1).split():
+            if word in _BREAKDOWN_STOP:
+                break
+            words.append(word)
+        unknown = [w for w in words if not _known(w)]
+        if unknown:
+            return " ".join(unknown)
+    return None
+
+
+def _available_breakdowns() -> str:
+    labels = [d.label.lower() for d in semantic.DIMENSIONS.values()]
+    return ", ".join(labels) + ", or by day, week, month or quarter"
+
+
+def _disclose_readings(intent: Intent) -> None:
+    """State how a business word was mapped onto a real field instead of mapping it silently."""
+    text = normalize(intent.question)
+    word = _REVENUE_WORDS.search(text)
+    if word and intent.metric in ("total_transaction_amount", "average_transaction_value"):
+        note = (f"The data has no revenue or sales field, so '{word.group(1)}' is read as UPI "
+                f"transaction value: the sum of payment amounts, not income earned by merchants "
+                f"or the network.")
+        if note not in intent.assumptions:
+            intent.assumptions.append(note)
+    region = _REGION_WORDS.search(text)
+    if region and "state" in (intent.dimension, intent.series):
+        note = (f"'{region.group(1)}' is read as the merchant's state, the only geography in the "
+                f"merchant master.")
+        if note not in intent.assumptions:
+            intent.assumptions.append(note)
+
+
 def _finish(intent: Intent, n_categories: int | None = None) -> Intent:
+    _disclose_readings(intent)
     choice = select_chart(
         kind=intent.kind, time_grain=intent.time_grain,
         dimension=intent.dimension if intent.dimension in semantic.DIMENSIONS else None,
@@ -411,6 +514,14 @@ def plan(question: str) -> Intent:
             "The data contains disputes, not confirmed fraud labels, so no merchant or customer "
             "can be called fraudulent. Try 'Show high-risk users with repeated disputes' for the "
             "explainable Risk Indicator Score, or 'Is there evidence of a fraud ring?'.")
+    for pattern, reason in _UNAVAILABLE:
+        if pattern.search(text):
+            raise IntentRejected(reason)
+    unknown = _unknown_breakdown(text)
+    if unknown:
+        raise IntentRejected(
+            f"'{unknown}' is not a field in this dataset's analytics registry, so the question "
+            f"cannot be broken down that way. Available breakdowns: {_available_breakdowns()}.")
 
     window = _detect_window(text)
 
@@ -432,6 +543,19 @@ def plan(question: str) -> Intent:
 
     metric_hit = resolve_metric(text)
     metric = metric_hit[1] if metric_hit else None
+    scale_match = _PER_SCALE.search(text)
+    if scale_match:
+        scale = _SCALE_WORDS[scale_match.group(1)]
+        spec = semantic.METRICS.get(metric) if metric else None
+        if (spec is None or spec.aggregation not in (semantic.SHARE, semantic.DISPUTED_RATIO)
+                or spec.scale != scale):
+            scaled = ", ".join(m.label.lower() for m in semantic.METRICS.values()
+                               if m.aggregation in (semantic.SHARE, semantic.DISPUTED_RATIO)
+                               and m.scale != 100.0)
+            raise IntentRejected(
+                f"No registered metric expresses that as a rate per {scale:,.0f}. Percentage "
+                f"metrics such as the chargeback rate are per 100 transactions; the registered "
+                f"per-1,000 rate is {scaled}.")
 
     if _FORECAST.search(text):
         chosen = metric if metric in FORECAST_METRICS else "total_transaction_count"

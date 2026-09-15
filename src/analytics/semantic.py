@@ -84,6 +84,8 @@ class Metric:
     predicate: tuple | None = None      # (column, value) for SHARE metrics
     time_column: str | None = TXN_TIME
     threshold: float | None = None      # for THRESHOLD_COUNT metrics
+    scale: float = 100.0                # SHARE / DISPUTED_RATIO multiplier: 100 = percent,
+                                        # 1000 = per 1,000 of the denominator
     synonyms: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -320,6 +322,31 @@ _add(Metric(
     synonyms=("chargeback to transaction ratio", "chargeback to transaction rate",
               "chargeback ratio", "chargeback rate", "dispute rate", "dispute ratio",
               "chargeback percentage", "dispute percentage"),
+))
+_add(Metric(
+    name="chargebacks_per_1000_transactions", label="Chargebacks per 1,000 transactions",
+    definition=(
+        "Disputed transactions for every 1,000 transactions, using exactly the chargeback-rate "
+        "definition. A chargeback here is a DISTINCT transaction with at least one complaint "
+        "linked through txn_id, not a complaint: a transaction disputed more than once counts "
+        "once. The value is the chargeback rate expressed per 1,000 instead of per 100."
+    ),
+    formula="1000 × COUNT(DISTINCT disputed txn_key) / COUNT(DISTINCT txn_key)",
+    grain="transaction", coverage_basis=LINKED_CB, chart_hint="kpi_card",
+    unit="per_1000", higher_is_worse=True,
+    notes="Same numerator, denominator and coverage as chargeback_to_transaction_ratio; "
+          "only the scale differs.",
+    source=TRANSACTIONS, aggregation=DISPUTED_RATIO, time_column=TXN_TIME, scale=1000.0,
+    synonyms=("chargebacks per 1000 transaction", "chargeback per 1000 transaction",
+              "chargebacks per thousand transaction", "chargeback per thousand transaction",
+              "chargebacks per 1k transaction", "chargeback rate per 1000 transaction",
+              "chargeback rate per thousand transaction", "chargeback rate per 1000",
+              "chargeback rate per thousand", "chargebacks per 1000", "chargebacks per thousand",
+              "disputes per 1000 transaction", "disputes per thousand transaction",
+              "disputed transactions per 1000 transaction",
+              "disputed transactions per thousand transaction",
+              "chargebacks per 1000 payment", "chargebacks per thousand payment",
+              "disputes per 1000 payment", "disputes per thousand payment"),
 ))
 _add(Metric(
     name="complaints_per_transaction", label="Complaints per transaction",

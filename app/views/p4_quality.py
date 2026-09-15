@@ -82,7 +82,7 @@ def _scorecard(ctx) -> None:
     ]
     frame = pd.DataFrame(rows, columns=["Defect", "Records", "Treatment"])
     st.dataframe(frame, hide_index=True, width="stretch", height=530,
-                 column_config={"Records": st.column_config.NumberColumn(format="%d")})
+                 column_config={"Records": st.column_config.NumberColumn(format="localized")})
 
     section("Attribution coverage", "How much of the book each analysis can actually reach.")
     c = st.columns(4, gap="small")

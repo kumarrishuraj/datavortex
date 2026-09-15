@@ -31,7 +31,7 @@ own `merchant_id` — would have quietly produced wrong answers.
 | Merchant IDs shared by different businesses | **1,310** |
 | Dashboard pages | **7** |
 | AI Investigator evaluation | **66 / 66** questions pass |
-| Automated tests | **387** passing |
+| Automated tests | **401** passing |
 
 The dataset has **no confirmed fraud label**. So this project does not label anyone as
 fraudulent. It tests fraud hypotheses, reports which ones the data supports and which it
@@ -260,7 +260,7 @@ complaint file's own timestamps for *when*.
 reconciliation tables and `audit_facts` — 29 forensic measurements that the dashboard quotes
 instead of hardcoding.
 
-**Semantic registry.** `src/analytics/semantic.py` defines **22 metrics** and **15 dimensions**
+**Semantic registry.** `src/analytics/semantic.py` defines **23 metrics** and **15 dimensions**
 once — definition, formula, grain, coverage basis, source table, aggregation and synonyms.
 `src/analytics/query_engine.py` runs any registered metric by dimension, time grain and time
 window, and checks that additive breakdowns sum back to the total. A test runs all 17 headline
@@ -512,7 +512,7 @@ no API key and makes no network calls, so a live demo cannot fail on one.
 ```
 natural-language question
    → typed intent        (measure, dimension, time grain, window, series, ranking)
-   → semantic registry validation   (22 metrics, 15 dimensions, allowed charts and limits)
+   → semantic registry validation   (23 metrics, 15 dimensions, allowed charts and limits)
    → query engine        (computes the answer in pandas over Parquet)
    → chart selection     (rules on the shape of the answer)
    → narrative + caveats (coverage, significance, risk disclaimer) + provenance
@@ -666,7 +666,7 @@ The dashboard, the notebook and the tests do not need the raw files.
 │   └── audit/                    15 Stage 1 forensic audit scripts
 ├── notebooks/
 │   └── datavortex_walkthrough.ipynb
-├── tests/                        5 test files, 387 tests
+├── tests/                        5 test files, 401 tests
 ├── docs/                         audit, data dictionary, reports, test matrix, checklists
 ├── data/
 │   ├── raw/README.md             raw files go here (not committed)
@@ -770,8 +770,8 @@ on a copy containing exactly the files that go into the repository:
 | Rebuild with the raw files copied in | all pipeline assertions and 16/16 KPI checks pass; all 37 Parquet files identical in content to the committed ones; the 4 generated reports identical |
 | Dashboard | all 7 pages render with no errors; `streamlit run` serves the app |
 | AI Investigator matrix | 66 / 66 |
-| `pytest tests/ -q` with raw files | 387 passed |
-| `pytest tests/ -q` in a fresh clone without raw files | 380 passed, 7 skipped with a stated reason |
+| `pytest tests/ -q` with raw files | 401 passed |
+| `pytest tests/ -q` in a fresh clone without raw files | 394 passed, 7 skipped with a stated reason |
 | Notebook | re-executed with 0 errors and the same outputs |
 
 That fresh-clone run also caught a real problem: four pipeline tests crashed with
@@ -794,9 +794,9 @@ pytest tests/ -q
 | `tests/test_pipeline_integration.py` | 34 | Grain, reconciliation to raw, no join fan-out, UNKNOWN routing, attribution, privacy of the processed tables |
 | `tests/test_analytics.py` | 46 | Shrinkage, significance tests, hypothesis grading, registry, aggregates |
 | `tests/test_dashboard.py` | 60 | All 7 pages rendered with Streamlit's AppTest, KPI parity, coverage badges, privacy, AI Investigator planning and execution |
-| `tests/test_submission_safety.py` | 153 | All 66 evaluation questions, trend phrasings must draw lines, chart rules, query engine vs every headline KPI, Risk Indicator formula and bounds, forecast selection, audit facts, PAN / Aadhaar / account scans, credential scan, a ban on `eval` / `exec` / `subprocess` / SQL engines, and a scan for typed figures in the app |
+| `tests/test_submission_safety.py` | 167 | All 66 evaluation questions, refusal of fields the data does not contain, the per-1,000 chargeback metric, trend phrasings must draw lines, chart rules, query engine vs every headline KPI, Risk Indicator formula and bounds, forecast selection, audit facts, PAN / Aadhaar / account scans, credential scan, a ban on `eval` / `exec` / `subprocess` / SQL engines, and a scan for typed figures in the app |
 
-**387 tests pass.** Without the raw files, 380 pass and 7 skip (4 raw-reconciliation tests, 2
+**401 tests pass.** Without the raw files, 394 pass and 7 skip (4 raw-reconciliation tests, 2
 dataset-notes coverage tests and 1 raw-identifier scan).
 
 Statistical routines are tested against synthetic data where the answer is known: a population
@@ -818,7 +818,7 @@ with one shared rate must return *no signal*, and a genuinely varied one must be
 | Core KPIs | Revenue and 16 other KPIs, independently validated; Risk Indicator Score. Churn does not apply — the data has no customer lifecycle field | §10, §11, [`docs/kpi_validation_report.md`](docs/kpi_validation_report.md) |
 | Storytelling | Findings generated from the build; rescue → identity → attribution → hypotheses → risk → investigator | Dashboard page 1, §17 |
 | Innovative dashboard approaches *(bonus)* | Coverage badges, confidence-interval rankings, generated significance caveats, hypothesis register, structural fraud-ring evidence, forecast bands, in-app test matrix | Pages 2–7 |
-| Code elegance & architecture | Modular cleaning, semantic registry, query engine, one-way data flow, 387 tests. No SQL views: Parquet aggregates are the view layer | §6, §20, §23 |
+| Code elegance & architecture | Modular cleaning, semantic registry, query engine, one-way data flow, 401 tests. No SQL views: Parquet aggregates are the view layer | §6, §20, §23 |
 | Advanced insights | Identity collisions, attribution tests, random-join detection, hypothesis testing, backtested forecasting. Clustering considered and rejected with evidence | §8–§14 |
 | AI: natural-language understanding *(bonus)* | **Partly met.** Rule-based planner over the registry, 66/66 evaluation questions; not an LLM, so phrasing outside the synonym set may fail | §16, [`docs/agent_test_matrix.md`](docs/agent_test_matrix.md) |
 | AI: chart selection *(bonus)* | Rule-based: line for time series, bars for comparisons, tables for records; no scatter intent | §16 |

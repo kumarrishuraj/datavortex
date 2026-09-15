@@ -118,7 +118,7 @@ def hbar_with_ci(labels, values, lo, hi, baseline=None, title="",
     return fig
 
 
-def status_composition(counts: dict, title="", height=110):
+def status_composition(counts: dict, title="", height=140):
     """Part-to-whole for a small number of ordered states.
 
     A 2px surface gap separates the segments, so adjacent fills never merge.
@@ -135,7 +135,7 @@ def status_composition(counts: dict, title="", height=110):
     layout = plotly_layout(height=height, showlegend=True, title_text=title, barmode="stack")
     layout["xaxis"].update(showgrid=False, showticklabels=False, linecolor="rgba(0,0,0,0)")
     layout["yaxis"].update(showgrid=False, showticklabels=False)
-    layout["margin"] = dict(l=4, r=4, t=34, b=4)
+    layout["margin"] = dict(l=4, r=4, t=64, b=4)
     fig.update_layout(**layout)
     return fig
 
@@ -251,7 +251,7 @@ def network(edges, title="", height=460, seed=7):
     for axis in ("xaxis", "yaxis"):
         layout[axis].update(showgrid=False, zeroline=False, showticklabels=False,
                             linecolor="rgba(0,0,0,0)")
-    layout["margin"] = dict(l=4, r=4, t=34, b=4)
+    layout["margin"] = dict(l=4, r=4, t=64, b=4)
     fig.update_layout(**layout)
     return fig
 

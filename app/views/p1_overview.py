@@ -203,10 +203,12 @@ def _render_findings(ctx) -> None:
          f"Category dispute rates span {cat['rate_pct'].min():.2f}–{cat['rate_pct'].max():.2f}%"
          f"{category_clause}. {top_cat['category']} ranks first"
          + (" and that ranking carries no information." if category_clause else ".")),
-        ("No fraud ring exists in this data — structurally",
+        ("No supported evidence for the tested fraud-ring hypothesis",
          f"The transaction graph is bipartite, has {fmt_int(net['components'])} components, "
-         f"and contains {int(net['user_pairs_sharing_2plus'])} four-cycles. It is a forest: "
-         "a circular A→B→C→A money path cannot exist here, so none is reported."),
+         f"and contains {int(net['user_pairs_sharing_2plus'])} four-cycles. It is a forest, so "
+         "these transactions cannot form a circular A→B→C→A money path. The available data does "
+         "not provide statistically or structurally supported evidence for the tested "
+         "fraud-ring hypothesis."),
     ]
     if len(contradicted):
         row = contradicted.iloc[0]
