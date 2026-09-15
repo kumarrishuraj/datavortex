@@ -4,7 +4,7 @@
 
 TransOrg AgentIQ Datathon 2026 · Track 1 — *UPI Fraud Ring & Merchant Analytics*
 
-> **Live dashboard:** *link to be added after deployment.*
+> **Live dashboard:** [kumarrishuraj-datavortex-appdashboard-vsor4k.streamlit.app](https://kumarrishuraj-datavortex-appdashboard-vsor4k.streamlit.app/)
 
 ---
 
