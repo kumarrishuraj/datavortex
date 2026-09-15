@@ -1,0 +1,51 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Raw competition data is NOT published.
+# The PDF requires "all code and data dictionaries" in the public repository, not the
+# dataset, and forbids sharing data outside the team. The KYC file also contains full
+# (synthetic) PAN and Aadhaar values. Evaluators place the organisers' bundle here;
+# see data/raw/README.md.
+data/raw/*
+!data/raw/README.md
+Dataset/
+
+# data/processed/ IS committed: Streamlit Community Cloud does not run the pipeline,
+# so the deployed app needs the built, privacy-safe Parquet present in the repository.
+# Rebuild locally with: python scripts/run_pipeline.py && python scripts/build_analytics.py
+outputs/
+*.tmp
+*.bak
+*.log
+nohup.out
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Internal team preparation documents: kept locally for the presentation and judge
+# preparation, never published.
+docs/README_FACT_SHEET.md
+docs/final_rubric_checklist.md
+docs/deployment_checklist.md
+docs/demo_script.md
+docs/judge_qa.md

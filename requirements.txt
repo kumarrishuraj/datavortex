@@ -1,0 +1,10 @@
+# DataVortex — runtime dependencies (what Streamlit Community Cloud installs).
+# Floors are the versions the app and all 234 tests were verified against.
+# Only packages actually imported are listed; test tooling is in requirements-dev.txt.
+# DuckDB is deliberately not a dependency: the analytics layer runs on pandas + Parquet.
+pandas>=3.0
+numpy>=2.0
+pyarrow>=15.0
+streamlit>=1.59
+plotly>=6.0
+networkx>=3.2

@@ -1,0 +1,7 @@
+# Development and testing. Install with: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.0
+# Rebuild and execute notebooks/datavortex_walkthrough.ipynb
+nbformat>=5.9
+nbclient>=0.10
+ipykernel>=6.29
