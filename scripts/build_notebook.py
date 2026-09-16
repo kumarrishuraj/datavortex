@@ -72,6 +72,8 @@ from src.config import PROCESSED_DIR
 pd.set_option("display.max_colwidth", 90)
 pd.set_option("display.width", 160)
 
+# Read the validated Parquet layer the pipeline wrote, so this walkthrough and the
+# dashboard resolve every figure from the same canonical facts and dimensions.
 star = {p.stem: pd.read_parquet(p) for p in PROCESSED_DIR.glob("*.parquet")}
 agg = {p.stem: pd.read_parquet(p) for p in (PROCESSED_DIR / "analytics").glob("*.parquet")}
 print(f"{len(star)} star-schema tables and {len(agg)} analytics tables loaded")
@@ -84,7 +86,11 @@ print(f"{len(star)} star-schema tables and {len(agg)} analytics tables loaded")
 Only byte-identical duplicate rows are removed. KYC and merchant records reduce to one row
 per key only after every candidate row is kept in the identity bridge table.
 """),
-    code("""star["recon_rows"]"""),
+    code("""
+# Raw-to-clean row counts. The reduction is deduplication and identity resolution only:
+# no row is dropped for failing to match another table.
+star["recon_rows"]
+"""),
     md("""
 ### Are the documented joins real?
 
@@ -92,13 +98,21 @@ Two ID columns drawn independently from the same ID space still overlap a lot by
 The test compares observed overlap with the overlap expected under independence. A z-score
 near zero means the join cannot be told apart from random.
 """),
-    code("""star["recon_independence"][["pair", "expected_overlap", "observed_overlap", "z_score", "verdict"]]"""),
+    code("""
+# This test decides how a dispute may be attributed: a z-score near zero means the
+# documented join is indistinguishable from random overlap and cannot carry attribution.
+star["recon_independence"][["pair", "expected_overlap", "observed_overlap", "z_score", "verdict"]]
+"""),
     md("""
 ### Forensic facts measured by the pipeline
 
 These are the values the dashboard quotes in its text. No page types them in by hand.
 """),
-    code("""star["audit_facts"][["fact", "value", "unit", "description"]]"""),
+    code("""
+# Each claim the dashboard makes in prose is measured here first, so the narrative and
+# the data cannot drift apart when the pipeline is rerun.
+star["audit_facts"][["fact", "value", "unit", "description"]]
+"""),
     md("""
 ## 2. Cleaning evidence
 
@@ -106,6 +120,8 @@ Damaged values are repaired where the repair is unambiguous and flagged either w
 flags stay on the rows, so every exclusion in an analysis can be counted.
 """),
     code("""
+# Defects are recorded as boolean flag columns instead of deleted rows, so an analysis can
+# exclude a class of records and still report exactly how many it excluded.
 def flag_summary(name, frame):
     flags = frame.select_dtypes(include=["bool", "boolean"])
     return pd.DataFrame({
@@ -119,13 +135,120 @@ tx, cb = star["fact_transactions"], star["fact_chargebacks"]
 pd.concat([flag_summary("fact_transactions", tx), flag_summary("fact_chargebacks", cb)],
           ignore_index=True)
 """),
-    code("""agg["agg_data_quality"]"""),
     code("""
+# The treatment column is the decision taken for each defect class: repaired and flagged,
+# flagged only, or routed to UNKNOWN and retained. Nothing here was deleted.
+agg["agg_data_quality"]
+"""),
+    code("""
+# Repeated IDs are reported as candidates rather than merged here, because a shared
+# identifier can represent different real-world entities: collapsing on the key would
+# destroy one of them and fabricate a record that was never in the source.
 users, merchants = star["dim_users"], star["dim_merchants"]
 bridge = star["bridge_identity_collision"]
 print(f"customer IDs shared by different people:      {int(users['identity_ambiguous'].sum()):,}")
 print(f"merchant IDs shared by different businesses:  {int(merchants['identity_ambiguous'].sum()):,}")
 print(f"candidate rows preserved in the bridge table: {len(bridge):,}")
+"""),
+    md("""
+## Cleaning decisions and why
+
+One rule governs the pipeline: **repair when the repair is unambiguous; otherwise flag and
+retain**. Cleaning is built to preserve auditability, not to raise join coverage by deleting
+rows that do not match. The tables above are the evidence; below is the reasoning.
+
+### Duplicate handling
+**Decision:** remove only byte-identical duplicate rows — 400 transactions, 84 complaints,
+278 KYC and 12 merchant rows. Repeated KYC and merchant IDs are never collapsed on the ID.
+
+**Why:** an identical row carries no information the original lacks, but two rows sharing an
+ID may be two different entities; collapsing on the key would destroy one of them.
+
+**Consequence:** every candidate row survives in `BRIDGE_IDENTITY_COLLISION` and stays
+inspectable.
+
+### ID normalization
+**Decision:** normalise identifiers to their canonical form; refuse and flag a value that
+cannot be repaired safely rather than truncating it to fit (`src/cleaning/ids.py`).
+
+**Why:** a value with more significant digits than the canonical width belongs to a
+different ID space, so truncating it would invent a join to the wrong entity.
+
+**Consequence:** malformed identifiers remain visible as flags instead of becoming
+confident false matches.
+
+### Timestamp parsing
+**Decision:** apply the separator rule established in `docs/01_forensic_audit.md` and flag
+whatever will not parse (`src/cleaning/timestamps.py`).
+
+**Why:** the rule is measured, not assumed — 18,385 slash-dated rows have a first part above
+12 and **0** have a second part above 12, while hyphen-dated rows show exactly the reverse.
+Zero counterexamples justify the interpretation; anything outside it is not guessed.
+
+**Consequence:** 1,000 date-only timestamps are excluded from hourly analysis and 412
+complaint delays are marked unknown rather than invented.
+
+### Amount sign repair
+**Decision:** treat a negative amount as a corrupted sign, repair it to magnitude and flag
+it (`src/cleaning/amounts.py`). It is not read as a refund.
+
+**Why:** the 429 raw negative amounts have **0** matching positive twins, and the negative
+rate is near-identical across success, failed and pending. A refund would leave a paired
+original; these do not, so the sign is damage rather than meaning.
+
+**Consequence:** 420 rows in the cleaned fact table carry the sign-repair flag, so any
+analysis can exclude them and say how many it excluded.
+
+### KYC / PAN repair
+**Decision:** repair only unambiguous OCR substitutions; leave truncated values unrepaired
+(`src/cleaning/kyc.py`).
+
+**Why:** a deterministic substitution (0↔O, 1↔I, 2↔Z, 5↔S, 8↔B) that yields a valid PAN can
+be justified, but a truncated PAN is missing characters outright and inventing them would
+create an identity that is not in the source.
+
+**Consequence:** 687 PANs repaired and 1,454 left unrepaired and flagged, both readable in
+`pan_status` on `DIM_USERS`.
+"""),
+    md("""
+### Identity collision handling
+**Decision:** never merge records only because `user_id` or `merchant_id` repeats.
+
+**Why:** 5,341 customer IDs and 1,310 merchant IDs are shared by genuinely different
+entities, corroborated by 4,422 IDs carrying more than one distinct valid PAN while **0**
+PANs are shared across IDs. The identifier is ambiguous; the person is not.
+
+**Consequence:** one survivor per key in the dimension, every other candidate preserved in
+the bridge table, and the ID flagged low-confidence wherever it is used.
+
+### UNKNOWN routing
+**Decision:** route unmatched fact rows to an explicit UNKNOWN dimension member instead of
+dropping them (`src/transformation/star_schema.py`).
+
+**Why:** dropping them would shrink every total and make coverage look better than it is.
+Two of the three documented joins are indistinguishable from random overlap, so the
+unmatched share is large and has to stay visible.
+
+**Consequence:** 13,522 transactions without a KYC match, 10,369 without a merchant-master
+match and 193 unlinked complaints stay in the totals and are reported as coverage.
+
+### Chargeback attribution
+**Decision:** attribute a complaint to its transaction through `txn_id`, taking the customer
+and merchant from that transaction — never from the complaint's own `user_id` or
+`merchant_id` (`src/cleaning/chargebacks.py`).
+
+**Why:** only the complaint-to-transaction join survives the independence test above. The
+complaint's own `user_id` agrees with its linked transaction in **0 of 2,607** cases and its
+`merchant_id` in **0 of 2,607**. Joining on those columns would attribute disputes to the
+wrong customers and merchants with complete confidence.
+
+**Consequence:** 2,607 complaints are attributed through the validated path and 193 stay
+unlinked rather than being forced onto a transaction.
+
+### Why records are retained rather than dropped
+Every decision above resolves the same way: what cannot be repaired is flagged and kept. The
+flags are ordinary columns, so any analysis can exclude a class of rows and state how many it
+excluded — see `docs/data_quality_report.md` and `docs/kpi_validation_report.md`.
 """),
     md("""
 ## 3. Statistical analysis A — do merchant categories differ in dispute rate?
@@ -136,6 +259,10 @@ count with what one shared rate would produce. The UNKNOWN group (transactions w
 merchant master record) stays in the test, as it does on the dashboard.
 """),
     code("""
+# The grain is distinct disputed transactions, not complaints: 151 transactions carry more
+# than one complaint, and counting complaints would treat them as independent events and
+# break the binomial assumption the test rests on. UNKNOWN stays in so unmatched rows
+# remain visible in the denominator instead of being silently removed.
 cat = agg["agg_category"]
 category_test = homogeneity_test(cat["disputed_transactions"], cat["transactions"])
 display(cat[["category", "transactions", "disputed_transactions", "rate_pct",
@@ -147,6 +274,8 @@ Cross-check: the semantic query engine the AI Investigator uses computes the sam
 numerators and denominators as the materialized aggregate.
 """),
     code("""
+# Asserted rather than eyeballed: if the notebook and the AI Investigator's query engine
+# ever disagreed on a numerator, this cell fails instead of quietly diverging.
 frames = QE.prepare_frames(star)
 engine = QE.run(QE.QuerySpec(metric="chargeback_to_transaction_ratio",
                              dimension="merchant_category"), frames).frame
@@ -165,6 +294,9 @@ spread out more than binomial sampling alone allows. The overdispersion statisti
 Only merchants above the denominator floor are tested.
 """),
     code("""
+# Only merchants above the denominator floor are tested: a 100% rate on a single
+# transaction is sampling noise, and leaving those rows in would dominate the statistic
+# and manufacture a merchant ranking out of thin denominators.
 mer = agg["agg_merchant"]
 eligible = mer[~mer["below_floor"]]
 observed = estimate_prior_strength(eligible["disputed_transactions"], eligible["transactions"])
@@ -179,6 +311,9 @@ real transaction count, and recompute the statistic 200 times. If the observed v
 inside that range, merchant-level differences cannot be told apart from noise.
 """),
     code("""
+# Calibration: simulate one shared dispute rate at the real transaction counts, so the
+# observed statistic is judged against noise this dataset could actually produce. The seed
+# is fixed so the published interval is reproducible.
 rng = np.random.default_rng(2026)
 n = eligible["transactions"].to_numpy()
 shared_rate = observed["mean_rate"]
@@ -200,7 +335,11 @@ print(f"raw rate spread {eligible['dispute_rate_raw_pct'].std():.2f} pp -> "
 Each insight suggested by the dataset notes, plus the team's own checks, with the test
 used and the verdict. CONTRADICTED means the data points the other way.
 """),
-    code("""agg["agg_hypothesis_register"][["hypothesis", "source", "test", "statistic", "p_value", "verdict"]]"""),
+    code("""
+# NOT SUPPORTED and CONTRADICTED verdicts are kept in the register and shown: a hypothesis
+# the data refused is a result, not a gap to quietly drop from the report.
+agg["agg_hypothesis_register"][["hypothesis", "source", "test", "statistic", "p_value", "verdict"]]
+"""),
     md("""
 ## 6. Forecast validation
 
@@ -210,6 +349,8 @@ contained the actual holdout value.
 """),
     code("""agg["agg_forecast_backtest"]"""),
     code("""
+# Methods are scored on a holdout they never saw rather than on in-sample fit, so a method
+# is selected only if it beat the alternatives on unseen days.
 agg["agg_forecast_diagnostics"][["label", "history_days", "holdout_days", "selected_method_label",
                                  "selected_mae", "mean_baseline_mae", "slope_per_day", "slope_p",
                                  "weekday_p", "holdout_band_coverage_pct"]]
@@ -220,6 +361,8 @@ agg["agg_forecast_diagnostics"][["label", "history_days", "holdout_days", "selec
 Generated from the tables above, so the sentences change if the data changes.
 """),
     code("""
+# The findings are generated from the tables above rather than typed by hand, so the
+# wording cannot drift from the data if the pipeline is rerun.
 register = agg["agg_hypothesis_register"]
 notes = register[register["source"] == "track1_dataset_notes.txt"]
 z = star["recon_independence"].set_index("pair")["z_score"]
